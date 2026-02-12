@@ -6,7 +6,7 @@ import time
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-ADMIN_ID = 8213465894  # KENDİ TELEGRAM ID'NI YAZ
+ADMIN_ID = 8572617983 # KENDİ TELEGRAM ID'NI YAZ
 GROUP_ID = -1003377826935  # GRUP ID YAZ
 
 warnings = {}
@@ -75,8 +75,6 @@ def send_to_group(message):
 
     if message.from_user.id != ADMIN_ID:
         return
-
-    
 
     text = message.text.replace("/gonder ", "")
 
