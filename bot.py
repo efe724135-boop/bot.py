@@ -6,7 +6,8 @@ import time
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-ADMIN_ID = 8213465894  # BURAYA KENDİ TELEGRAM ID'NI YAZ
+ADMIN_ID = 8213465894  # KENDİ TELEGRAM ID'NI YAZ
+GROUP_ID = -1003377826935  # GRUP ID YAZ
 
 warnings = {}
 last_messages = {}
@@ -14,10 +15,10 @@ last_messages = {}
 bad_words = ["oç", "ananı", "amk", "sikim", "piç"]
 
 
-# /start komutu (özel mesaj için)
+# /start bir şey demesin
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    pass  # start bir şey demesin
+    pass
 
 
 # Admin kontrol
@@ -68,7 +69,23 @@ def manual_unban(message):
         bot.send_message(message.chat.id, "✅ Kullanıcının banı kaldırıldı.")
 
 
-# Mesaj kontrol sistemi
+# 🔥 ÖZELDEN GRUBA MESAJ GÖNDERME
+@bot.message_handler(commands=['gonder'])
+def send_to_group(message):
+
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    if message.chat.type != "private":
+        return
+
+    text = message.text.replace("/gonder ", "")
+
+    bot.send_message(GROUP_ID, text)
+    bot.reply_to(message, "Mesaj gruba gönderildi ✅")
+
+
+# Mesaj koruma sistemi
 @bot.message_handler(func=lambda m: True)
 def protect(message):
     if not message.text:
