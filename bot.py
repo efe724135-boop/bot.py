@@ -1,134 +1,225 @@
 import telebot
-import re
 import os
 import time
+import threading
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-ADMIN_ID = 8572617983 # KENDİ TELEGRAM ID'NI YAZ
-GROUP_ID = -1003377826935  # GRUP ID YAZ
+OWNER_ID = 8213465894 # BURAYA KENDİ ID'NI YAZ
+
+SECURITY_LEVEL = 2
+MAX_WARN = 3
+WELCOME_DELETE_TIME = 30
+FLOOD_LIMIT = 5
+FLOOD_TIME = 5
+
+BAD_WORDS = ["oç", "amk", "piç"]
 
 warnings = {}
-last_messages = {}
+message_tracker = {}
 
-bad_words = ["oç", "ananı", "amk", "sikim", "piç"]
+# ================= YETKİ =================
 
-
-# /start bir şey demesin
-@bot.message_handler(commands=['start'])
-def start_message(message):
-    pass
-
-
-# Admin kontrol
 def is_admin(chat_id, user_id):
-    admins = bot.get_chat_administrators(chat_id)
-    return any(admin.user.id == user_id for admin in admins)
+    member = bot.get_chat_member(chat_id, user_id)
+    return member.status in ["administrator", "creator"]
 
+def is_owner(user_id):
+    return user_id == OWNER_ID
 
-# Uyarı sistemi
-def add_warning(chat_id, user_id):
-    if user_id not in warnings:
-        warnings[user_id] = 0
-    warnings[user_id] += 1
+def delete_later(chat_id, message_id, delay):
+    time.sleep(delay)
+    try:
+        bot.delete_message(chat_id, message_id)
+    except:
+        pass
 
-    if warnings[user_id] >= 3:
-        bot.ban_chat_member(chat_id, user_id)
-        bot.send_message(chat_id, "🚫 3 uyarı aldın, banlandın.")
+# ================= ANİMASYONLU HOŞ GELDİN =================
 
-
-# Yeni gelen üyeye hoşgeldin
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
-        bot.send_message(message.chat.id, f"Hoşgeldin {user.first_name} 👋")
 
+        sent = bot.send_message(
+            message.chat.id,
+            "🔄 Yeni üye katılıyor..."
+        )
 
-# 🔥 MANUEL BAN
+        def animate():
+            frames = [
+                f"👀 Profil kontrol ediliyor...",
+                f"📡 Sisteme ekleniyor...",
+                f"🔥 Hoş geldin *{user.first_name}* !\n\n💎 En iyi hile burada!\n⚡ Kurallara uymayı unutma."
+            ]
+
+            for frame in frames:
+                time.sleep(1.2)
+                try:
+                    bot.edit_message_text(
+                        frame,
+                        message.chat.id,
+                        sent.message_id
+                    )
+                except:
+                    pass
+
+            # 30 saniye sonra sil
+            time.sleep(WELCOME_DELETE_TIME)
+            try:
+                bot.delete_message(message.chat.id, sent.message_id)
+            except:
+                pass
+
+        threading.Thread(target=animate).start()
+
+# ================= WARN SİSTEMİ =================
+
+def add_warn(chat_id, user):
+
+    user_id = user.id
+
+    if user_id not in warnings:
+        warnings[user_id] = 0
+
+    warnings[user_id] += 1
+
+    warn_msg = bot.send_message(
+        chat_id,
+        f"⚠️ *{user.first_name}* uyarıldı! ({warnings[user_id]}/{MAX_WARN})"
+    )
+
+    threading.Thread(
+        target=delete_later,
+        args=(chat_id, warn_msg.message_id, 10)
+    ).start()
+
+    if warnings[user_id] >= MAX_WARN:
+
+        admins = bot.get_chat_administrators(chat_id)
+        admin_mentions = ""
+
+        for admin in admins:
+            if not admin.user.is_bot:
+                admin_mentions += f"[{admin.user.first_name}](tg://user?id={admin.user.id}) "
+
+        bot.send_message(
+            chat_id,
+            f"🚨 *{user.first_name}* 3 uyarıya ulaştı!\nAdminler ilgilensin.\n\n{admin_mentions}"
+        )
+
+        warnings[user_id] = 0
+
+# ================= BAN =================
+
 @bot.message_handler(commands=['ban'])
-def manual_ban(message):
-    if message.from_user.id != ADMIN_ID:
+def ban_user(message):
+
+    if not is_admin(message.chat.id, message.from_user.id):
+        bot.reply_to(message, "❌ Sadece admin ban atabilir.")
         return
 
     if message.reply_to_message:
         user_id = message.reply_to_message.from_user.id
         bot.ban_chat_member(message.chat.id, user_id)
-        bot.send_message(message.chat.id, "🚫 Kullanıcı banlandı.")
+        bot.reply_to(message, "✅ Kullanıcı banlandı.")
 
+# ================= UNBAN =================
 
-# 🔥 MANUEL UNBAN
 @bot.message_handler(commands=['unban'])
-def manual_unban(message):
-    if message.from_user.id != ADMIN_ID:
+def unban_user(message):
+
+    if not is_admin(message.chat.id, message.from_user.id):
+        bot.reply_to(message, "❌ Sadece admin unban yapabilir.")
         return
 
     if message.reply_to_message:
         user_id = message.reply_to_message.from_user.id
         bot.unban_chat_member(message.chat.id, user_id)
-        bot.send_message(message.chat.id, "✅ Kullanıcının banı kaldırıldı.")
+        bot.reply_to(message, "✅ Ban kaldırıldı.")
 
+# ================= MUTE =================
 
-# 🔥 ÖZELDEN GRUBA MESAJ GÖNDERME
-@bot.message_handler(commands=['gonder'])
-def send_to_group(message):
+@bot.message_handler(commands=['mute'])
+def mute_user(message):
 
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.chat.id, message.from_user.id):
+        bot.reply_to(message, "❌ Sadece admin mute atabilir.")
         return
 
-    text = message.text.replace("/gonder ", "")
+    if message.reply_to_message:
+        user_id = message.reply_to_message.from_user.id
+        bot.restrict_chat_member(
+            message.chat.id,
+            user_id,
+            can_send_messages=False
+        )
+        bot.reply_to(message, "🔇 Kullanıcı susturuldu.")
 
-    bot.send_message(GROUP_ID, text)
-    bot.reply_to(message, "Mesaj gruba gönderildi ✅")
+# ================= UNMUTE =================
 
+@bot.message_handler(commands=['unmute'])
+def unmute_user(message):
 
-# Mesaj koruma sistemi
-@bot.message_handler(func=lambda m: True)
+    if not is_admin(message.chat.id, message.from_user.id):
+        bot.reply_to(message, "❌ Sadece admin unmute yapabilir.")
+        return
+
+    if message.reply_to_message:
+        user_id = message.reply_to_message.from_user.id
+        bot.restrict_chat_member(
+            message.chat.id,
+            user_id,
+            can_send_messages=True,
+            can_send_media_messages=True,
+            can_send_other_messages=True
+        )
+        bot.reply_to(message, "🔊 Susturma kaldırıldı.")
+
+# ================= KORUMA =================
+
+@bot.message_handler(func=lambda message: True)
 def protect(message):
+
     if not message.text:
         return
 
-    chat_id = message.chat.id
     user_id = message.from_user.id
+    chat_id = message.chat.id
     text = message.text.lower()
 
     if is_admin(chat_id, user_id):
         return
 
-    # Küfür kontrol
-    for word in bad_words:
+    # Küfür
+    for word in BAD_WORDS:
         if word in text:
             bot.delete_message(chat_id, message.message_id)
-            bot.send_message(chat_id, "🚫 Küfür yasak!")
-            add_warning(chat_id, user_id)
+            add_warn(chat_id, message.from_user)
             return
 
-    # Reklam kontrol
-    if re.search(r"(http|t\.me|www\.)", text):
+    # Reklam
+    if "http://" in text or "https://" in text or "t.me/" in text:
         bot.delete_message(chat_id, message.message_id)
-        bot.send_message(chat_id, "🚫 Reklam yasak!")
-        add_warning(chat_id, user_id)
+        add_warn(chat_id, message.from_user)
         return
 
-    # Spam kontrol (5 saniyede 3 mesaj)
+    # Spam
     now = time.time()
 
-    if user_id not in last_messages:
-        last_messages[user_id] = []
+    if user_id not in message_tracker:
+        message_tracker[user_id] = []
 
-    last_messages[user_id] = [
-        t for t in last_messages[user_id] if now - t < 5
+    message_tracker[user_id].append(now)
+
+    message_tracker[user_id] = [
+        t for t in message_tracker[user_id] if now - t < FLOOD_TIME
     ]
 
-    last_messages[user_id].append(now)
-
-    if len(last_messages[user_id]) >= 3:
+    if len(message_tracker[user_id]) > FLOOD_LIMIT:
         bot.delete_message(chat_id, message.message_id)
-        bot.send_message(chat_id, "🚫 Spam yapma!")
-        add_warning(chat_id, user_id)
+        add_warn(chat_id, message.from_user)
         return
 
-
-print("Koruma botu aktif 🔥")
 
 bot.infinity_polling()
