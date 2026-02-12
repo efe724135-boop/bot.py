@@ -76,8 +76,7 @@ def send_to_group(message):
     if message.from_user.id != ADMIN_ID:
         return
 
-    if message.chat.type != "private":
-        return
+    
 
     text = message.text.replace("/gonder ", "")
 
