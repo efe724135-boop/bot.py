@@ -2,8 +2,9 @@ import telebot
 from telebot.types import ChatPermissions
 import re
 
-BOT_TOKEN = "8326281735:AAFJG7wfgzozpEMuKG5V_nAkM6oD2ivMH74"
-bot = telebot.TeleBot(BOT_TOKEN)
+import os
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 
 warnings = {}  # kullanıcı uyarı sayacı
 
