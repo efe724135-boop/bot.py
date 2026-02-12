@@ -6,20 +6,25 @@ import time
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
+ADMIN_ID = 8213465894  # BURAYA KENDİ TELEGRAM ID'NI YAZ
+
 warnings = {}
 last_messages = {}
 
 bad_words = ["oç", "ananı", "amk", "sikim", "piç"]
 
+
 # /start komutu (özel mesaj için)
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    bot.reply_to(message, "Blaxape hoşgeldin 👋")
+    pass  # start bir şey demesin
+
 
 # Admin kontrol
 def is_admin(chat_id, user_id):
     admins = bot.get_chat_administrators(chat_id)
     return any(admin.user.id == user_id for admin in admins)
+
 
 # Uyarı sistemi
 def add_warning(chat_id, user_id):
@@ -31,11 +36,37 @@ def add_warning(chat_id, user_id):
         bot.ban_chat_member(chat_id, user_id)
         bot.send_message(chat_id, "🚫 3 uyarı aldın, banlandın.")
 
+
 # Yeni gelen üyeye hoşgeldin
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
-        bot.send_message(message.chat.id, f"Blaxape hoşgeldin {user.first_name} 👋")
+        bot.send_message(message.chat.id, f"Hoşgeldin {user.first_name} 👋")
+
+
+# 🔥 MANUEL BAN
+@bot.message_handler(commands=['ban'])
+def manual_ban(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    if message.reply_to_message:
+        user_id = message.reply_to_message.from_user.id
+        bot.ban_chat_member(message.chat.id, user_id)
+        bot.send_message(message.chat.id, "🚫 Kullanıcı banlandı.")
+
+
+# 🔥 MANUEL UNBAN
+@bot.message_handler(commands=['unban'])
+def manual_unban(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    if message.reply_to_message:
+        user_id = message.reply_to_message.from_user.id
+        bot.unban_chat_member(message.chat.id, user_id)
+        bot.send_message(message.chat.id, "✅ Kullanıcının banı kaldırıldı.")
+
 
 # Mesaj kontrol sistemi
 @bot.message_handler(func=lambda m: True)
