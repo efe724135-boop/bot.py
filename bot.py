@@ -79,4 +79,9 @@ def protect(message):
         add_warning(chat_id, user_id)
 
 print("Koruma botu aktif 🔥")
-bot.infinity_polling()
+
+while True:
+    try:
+        bot.infinity_polling(timeout=60, long_polling_timeout=60)
+    except Exception as e:
+        print(e)
