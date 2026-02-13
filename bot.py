@@ -6,8 +6,9 @@ import threading
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-OWNER_ID = 8213465894 # BURAYA KENDİ ID'NI YAZ
-WELCOME_IMAGE = "https://i.imgur.com/MDqyHge.jpg"
+OWNER_ID = 8213465894  # BURAYA KENDİ ID'NI YAZ
+
+WELCOME_PHOTO_ID = "AgACAgQAAyEFAATJVYx3AAJ6-WmPVdnWb8oTmQ3dP8lahEm_r1x2AAIID2sbKP6AUFlsHVWp1LFcAQADAgADeQADOgQ"
 
 user_messages = {}
 
@@ -39,27 +40,45 @@ def is_admin(user_id, chat_id):
 def is_authorized(user_id, chat_id):
     return is_owner(user_id) or is_admin(user_id, chat_id)
 
-@bot.message_handler(content_types=['photo'])
-def get_file_id(message):
-    file_id = message.photo[-1].file_id
-    bot.reply_to(message, f"FILE_ID:\n{file_id}")
+# ==========================
+# FOTOĞRAFLI HOŞGELDİN
+# ==========================
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome(message):
+    for user in message.new_chat_members:
+        text = f"""
+🔥 Hosgeldiniz {user.first_name}
+
+İletisim @BlaxAP31
+Reklam @BlaxAP31
+Hile alım @BlaxAP31
+
+💰 Fiyatlar
+1 günlük 100 TL
+3 günlük 180 TL
+1 hafta 250 TL
+1 ay 450 TL
+Sezonluk 510 TL
+"""
+        msg = bot.send_photo(
+            message.chat.id,
+            WELCOME_PHOTO_ID,
+            caption=text
+        )
+        delete_later(message.chat.id, msg.message_id)
+
 # ==========================
 # MUTE
 # ==========================
 @bot.message_handler(commands=['mute'])
 def mute_user(message):
     if not is_authorized(message.from_user.id, message.chat.id):
-        msg = bot.reply_to(message, "❌ Yetkili değilsin.")
-        delete_later(message.chat.id, msg.message_id)
         return
 
     if not message.reply_to_message:
         return
 
     target = message.reply_to_message.from_user
-
-    if is_owner(target.id):
-        return
 
     try:
         minutes = int(message.text.split()[1])
@@ -106,7 +125,7 @@ def unmute_user(message):
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# BAN
+# BAN (ADMİN DAHİL)
 # ==========================
 @bot.message_handler(commands=['ban'])
 def ban_user(message):
@@ -118,7 +137,10 @@ def ban_user(message):
 
     target = message.reply_to_message.from_user
 
+    # OWNER BANLANAMAZ
     if is_owner(target.id):
+        msg = bot.send_message(message.chat.id, "❌ Owner banlanamaz.")
+        delete_later(message.chat.id, msg.message_id)
         return
 
     bot.ban_chat_member(message.chat.id, target.id)
@@ -161,7 +183,7 @@ Komutlar:
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# SPAM KORUMA (EN ALTTA!)
+# SPAM KORUMA
 # ==========================
 @bot.message_handler(func=lambda m: m.content_type == "text" and not m.text.startswith("/"))
 def spam_control(message):
