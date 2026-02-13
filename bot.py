@@ -45,13 +45,28 @@ def is_authorized(user_id, chat_id):
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
+        text = f"""
+🔥 BlaxAP chate hoşgeldin {user.first_name}!
+
+📩 İletişim: @BlaxAP31  
+📢 Reklam için: @BlaxAP31  
+💎 Hile satın alım için: @BlaxAP31  
+
+💰 Hile Fiyatları:
+1 Günlük - 100 TL
+3 Günlük - 180 TL
+1 Hafta - 250 TL
+1 Ay - 450 TL
+Sezonluk - 510 TL
+"""
+
         msg = bot.send_photo(
             message.chat.id,
             WELCOME_IMAGE,
-            caption=f"🔥 Türkiye'nin en iyi hile kanalına hoş geldin {user.first_name}!"
+            caption=text
         )
-        delete_later(message.chat.id, msg.message_id)
 
+        delete_later(message.chat.id, msg.message_id)
 # ==========================
 # MUTE
 # ==========================
