@@ -205,4 +205,8 @@ def spam_control(message):
             pass
 
 print("Bot aktif...")
+@bot.message_handler(content_types=['photo'])
+def get_file_id(message):
+    file_id = message.photo[-1].file_id
+    print("FILE_ID:", file_id)
 bot.infinity_polling()
