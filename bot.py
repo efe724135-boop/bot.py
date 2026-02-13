@@ -37,7 +37,7 @@ def is_admin(user_id, chat_id):
         return False
 
 def is_authorized(user_id, chat_id):
-    return is_owner(user_id) or is_admin(user_id, chat_id)
+    return True
 
 # ==========================
 # FOTOĞRAFLI HOŞGELDİN
