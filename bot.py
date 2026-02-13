@@ -6,17 +6,13 @@ import threading
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# 👑 OWNER
-OWNER_ID = 8213465894  # BURAYA KENDİ ID'NI YAZ
-
-# 🖼 HOŞGELDİN FOTO
+OWNER_ID = 8213465894 # BURAYA KENDİ ID'NI YAZ
 WELCOME_IMAGE = "https://i.imgur.com/MDqyHge.jpg"
 
-# Spam sistemi
 user_messages = {}
 
 # ==========================
-# MESAJ SİLME (15 SN)
+# MESAJI 15 SN SONRA SİL
 # ==========================
 def delete_later(chat_id, message_id, delay=15):
     def task():
@@ -57,27 +53,6 @@ def welcome(message):
         delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# SPAM KORUMA
-# ==========================
-@bot.message_handler(func=lambda m: True, content_types=['text'])
-def spam_control(message):
-    user_id = message.from_user.id
-    now = time.time()
-
-    if user_id not in user_messages:
-        user_messages[user_id] = []
-
-    user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 5]
-    user_messages[user_id].append(now)
-
-    if len(user_messages[user_id]) > 5:
-        try:
-            bot.delete_message(message.chat.id, message.message_id)
-        except:
-            pass
-        return
-
-# ==========================
 # MUTE
 # ==========================
 @bot.message_handler(commands=['mute'])
@@ -95,11 +70,11 @@ def mute_user(message):
     if is_owner(target.id):
         return
 
-    args = message.text.split()
-    if len(args) < 2:
+    try:
+        minutes = int(message.text.split()[1])
+    except:
         return
 
-    minutes = int(args[1])
     if minutes not in [5, 10, 15]:
         return
 
@@ -156,6 +131,7 @@ def ban_user(message):
         return
 
     bot.ban_chat_member(message.chat.id, target.id)
+
     msg = bot.send_message(message.chat.id, f"🚫 {target.first_name} banlandı.")
     delete_later(message.chat.id, msg.message_id)
 
@@ -167,32 +143,51 @@ def unban_user(message):
     if not is_authorized(message.from_user.id, message.chat.id):
         return
 
-    if len(message.text.split()) < 2:
+    try:
+        user_id = int(message.text.split()[1])
+    except:
         return
 
-    user_id = int(message.text.split()[1])
     bot.unban_chat_member(message.chat.id, user_id)
 
     msg = bot.send_message(message.chat.id, "✅ Kullanıcının banı kaldırıldı.")
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# KOMUT LİSTESİ
+# START
 # ==========================
 @bot.message_handler(commands=['start'])
 def start(message):
     msg = bot.send_message(message.chat.id,
-"""
-🔥 Guard Bot Aktif
+"""🔥 Guard Bot Aktif
 
 Komutlar:
 /mute 5-10-15
 /unmute
 /ban
 /unban
-"""
-)
+""")
     delete_later(message.chat.id, msg.message_id)
+
+# ==========================
+# SPAM KORUMA (EN ALTTA!)
+# ==========================
+@bot.message_handler(func=lambda m: m.content_type == "text" and not m.text.startswith("/"))
+def spam_control(message):
+    user_id = message.from_user.id
+    now = time.time()
+
+    if user_id not in user_messages:
+        user_messages[user_id] = []
+
+    user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 5]
+    user_messages[user_id].append(now)
+
+    if len(user_messages[user_id]) > 5:
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except:
+            pass
 
 print("Bot aktif...")
 bot.infinity_polling()
