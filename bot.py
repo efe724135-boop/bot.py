@@ -37,36 +37,12 @@ def is_admin(user_id, chat_id):
         return False
 
 def is_authorized(user_id, chat_id):
-    return True
+    return is_owner(user_id) or is_admin(user_id, chat_id)
 
-# ==========================
-# FOTOĞRAFLI HOŞGELDİN
-# ==========================
-@bot.message_handler(content_types=['new_chat_members'])
-def welcome(message):
-    for user in message.new_chat_members:
-        text = f"""
-🔥 BlaxAP chate hoşgeldin {user.first_name}!
-
-📩 İletişim: @BlaxAP31  
-📢 Reklam için: @BlaxAP31  
-💎 Hile satın alım için: @BlaxAP31  
-
-💰 Hile Fiyatları:
-1 Günlük - 100 TL
-3 Günlük - 180 TL
-1 Hafta - 250 TL
-1 Ay - 450 TL
-Sezonluk - 510 TL
-"""
-
-        msg = bot.send_photo(
-            message.chat.id,
-            WELCOME_IMAGE,
-            caption=text
-        )
-
-        delete_later(message.chat.id, msg.message_id)
+@bot.message_handler(content_types=['photo'])
+def get_file_id(message):
+    file_id = message.photo[-1].file_id
+    bot.reply_to(message, f"FILE_ID:\n{file_id}")
 # ==========================
 # MUTE
 # ==========================
@@ -205,8 +181,4 @@ def spam_control(message):
             pass
 
 print("Bot aktif...")
-@bot.message_handler(content_types=['photo'])
-def get_file_id(message):
-    file_id = message.photo[-1].file_id
-    print("FILE_ID:", file_id)
 bot.infinity_polling()
