@@ -1,88 +1,126 @@
 import telebot
-import time
 import os
+import time
+import threading
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-OWNER_ID = 6393604989
-ADMIN_IDS = [8213465894]
+# 👑 OWNER
+OWNER_ID = 8213465894  # BURAYA KENDİ ID'NI YAZ
 
-BAD_WORDS = ["oç", "amk", "ananı", "piç", "sik"]
+# 🖼 HOŞGELDİN FOTO
+WELCOME_IMAGE = "https://i.imgur.com/MDqyHge.jpg"
 
-last_messages = {}
-flood_count = {}
+# Spam sistemi
+user_messages = {}
 
-# ===== YETKI =====
+# ==========================
+# MESAJ SİLME (15 SN)
+# ==========================
+def delete_later(chat_id, message_id, delay=15):
+    def task():
+        time.sleep(delay)
+        try:
+            bot.delete_message(chat_id, message_id)
+        except:
+            pass
+    threading.Thread(target=task).start()
+
+# ==========================
+# YETKİ KONTROL
+# ==========================
 def is_owner(user_id):
     return user_id == OWNER_ID
 
-def is_admin(user_id):
-    return user_id == OWNER_ID or user_id in ADMIN_IDS
-
-def delete_later(chat_id, message_id, seconds=15):
-    time.sleep(seconds)
+def is_admin(user_id, chat_id):
     try:
-        bot.delete_message(chat_id, message_id)
+        member = bot.get_chat_member(chat_id, user_id)
+        return member.status in ["administrator", "creator"]
     except:
-        pass
+        return False
 
-# ===== HOSGELDIN MESAJI =====
+def is_authorized(user_id, chat_id):
+    return is_owner(user_id) or is_admin(user_id, chat_id)
+
+# ==========================
+# FOTOĞRAFLI HOŞGELDİN
+# ==========================
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
-        msg = bot.send_message(
+        msg = bot.send_photo(
             message.chat.id,
-            f"Türkiye'nin en iyi hile kanalına hoşgeldin {user.first_name} 🔥"
+            WELCOME_IMAGE,
+            caption=f"🔥 Türkiye'nin en iyi hile kanalına hoş geldin {user.first_name}!"
         )
         delete_later(message.chat.id, msg.message_id)
 
-# ===== SURELI MUTE =====
+# ==========================
+# SPAM KORUMA
+# ==========================
+@bot.message_handler(func=lambda m: True, content_types=['text'])
+def spam_control(message):
+    user_id = message.from_user.id
+    now = time.time()
+
+    if user_id not in user_messages:
+        user_messages[user_id] = []
+
+    user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 5]
+    user_messages[user_id].append(now)
+
+    if len(user_messages[user_id]) > 5:
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except:
+            pass
+        return
+
+# ==========================
+# MUTE
+# ==========================
 @bot.message_handler(commands=['mute'])
 def mute_user(message):
-
-    if not is_admin(message.from_user.id):
+    if not is_authorized(message.from_user.id, message.chat.id):
+        msg = bot.reply_to(message, "❌ Yetkili değilsin.")
+        delete_later(message.chat.id, msg.message_id)
         return
 
     if not message.reply_to_message:
         return
 
-    args = message.text.split()
-
-    if len(args) < 2:
-        msg = bot.reply_to(message, "Süre yaz: /mute 5")
-        delete_later(message.chat.id, msg.message_id)
-        return
-
-    try:
-        minutes = int(args[1])
-    except:
-        return
-
-    if minutes not in [5,10,15]:
-        msg = bot.reply_to(message, "Sadece 5, 10 veya 15 dk.")
-        delete_later(message.chat.id, msg.message_id)
-        return
-
     target = message.reply_to_message.from_user
 
-    if target.id == OWNER_ID:
-        msg = bot.reply_to(message, "Owner'a işlem yapamazsın.")
-        delete_later(message.chat.id, msg.message_id)
+    if is_owner(target.id):
         return
 
-    until_time = int(time.time()) + (minutes * 60)
+    args = message.text.split()
+    if len(args) < 2:
+        return
 
-    bot.restrict_chat_member(message.chat.id, target.id, until_date=until_time)
+    minutes = int(args[1])
+    if minutes not in [5, 10, 15]:
+        return
 
-    msg = bot.reply_to(message, f"{target.first_name} {minutes} dk susturuldu.")
+    until = int(time.time()) + minutes * 60
+
+    bot.restrict_chat_member(
+        message.chat.id,
+        target.id,
+        until_date=until,
+        can_send_messages=False
+    )
+
+    msg = bot.send_message(message.chat.id, f"🔇 {target.first_name} {minutes} dakika susturuldu.")
     delete_later(message.chat.id, msg.message_id)
 
-# ===== UNMUTE =====
+# ==========================
+# UNMUTE
+# ==========================
 @bot.message_handler(commands=['unmute'])
 def unmute_user(message):
-
-    if not is_admin(message.from_user.id):
+    if not is_authorized(message.from_user.id, message.chat.id):
         return
 
     if not message.reply_to_message:
@@ -95,18 +133,18 @@ def unmute_user(message):
         target.id,
         can_send_messages=True,
         can_send_media_messages=True,
-        can_send_other_messages=True,
-        can_add_web_page_previews=True
+        can_send_other_messages=True
     )
 
-    msg = bot.reply_to(message, f"{target.first_name} susturma kaldırıldı.")
+    msg = bot.send_message(message.chat.id, f"🔊 {target.first_name} susturma kaldırıldı.")
     delete_later(message.chat.id, msg.message_id)
 
-# ===== BAN =====
+# ==========================
+# BAN
+# ==========================
 @bot.message_handler(commands=['ban'])
 def ban_user(message):
-
-    if not is_admin(message.from_user.id):
+    if not is_authorized(message.from_user.id, message.chat.id):
         return
 
     if not message.reply_to_message:
@@ -114,72 +152,47 @@ def ban_user(message):
 
     target = message.reply_to_message.from_user
 
-    if target.id == OWNER_ID:
-        msg = bot.reply_to(message, "Owner'a işlem yapamazsın.")
-        delete_later(message.chat.id, msg.message_id)
+    if is_owner(target.id):
         return
 
     bot.ban_chat_member(message.chat.id, target.id)
-
-    msg = bot.reply_to(message, f"{target.first_name} banlandı.")
+    msg = bot.send_message(message.chat.id, f"🚫 {target.first_name} banlandı.")
     delete_later(message.chat.id, msg.message_id)
 
-# ===== UNBAN =====
+# ==========================
+# UNBAN
+# ==========================
 @bot.message_handler(commands=['unban'])
 def unban_user(message):
-
-    if not is_admin(message.from_user.id):
+    if not is_authorized(message.from_user.id, message.chat.id):
         return
 
-    if not message.reply_to_message:
+    if len(message.text.split()) < 2:
         return
 
-    target = message.reply_to_message.from_user
+    user_id = int(message.text.split()[1])
+    bot.unban_chat_member(message.chat.id, user_id)
 
-    bot.unban_chat_member(message.chat.id, target.id)
-
-    msg = bot.reply_to(message, f"{target.first_name} ban kaldırıldı.")
+    msg = bot.send_message(message.chat.id, "✅ Kullanıcının banı kaldırıldı.")
     delete_later(message.chat.id, msg.message_id)
 
-# ===== FILTRE SISTEMI =====
-@bot.message_handler(func=lambda m: True)
-def filter_messages(message):
+# ==========================
+# KOMUT LİSTESİ
+# ==========================
+@bot.message_handler(commands=['start'])
+def start(message):
+    msg = bot.send_message(message.chat.id,
+"""
+🔥 Guard Bot Aktif
 
-    if is_admin(message.from_user.id):
-        return
-
-    text = message.text.lower()
-
-    # Küfür
-    for word in BAD_WORDS:
-        if word in text:
-            bot.delete_message(message.chat.id, message.message_id)
-            return
-
-    # Link
-    if "http" in text or "t.me" in text or "@" in text:
-        bot.delete_message(message.chat.id, message.message_id)
-        return
-
-    # Flood
-    user_id = message.from_user.id
-    now = time.time()
-
-    if user_id not in last_messages:
-        last_messages[user_id] = now
-        flood_count[user_id] = 1
-    else:
-        if now - last_messages[user_id] < 2:
-            flood_count[user_id] += 1
-        else:
-            flood_count[user_id] = 1
-
-        last_messages[user_id] = now
-
-        if flood_count[user_id] >= 5:
-            until_time = int(time.time()) + (10 * 60)
-            bot.restrict_chat_member(message.chat.id, user_id, until_date=until_time)
-            bot.delete_message(message.chat.id, message.message_id)
+Komutlar:
+/mute 5-10-15
+/unmute
+/ban
+/unban
+"""
+)
+    delete_later(message.chat.id, msg.message_id)
 
 print("Bot aktif...")
 bot.infinity_polling()
