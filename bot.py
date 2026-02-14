@@ -7,8 +7,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 OWNER_ID = 8213465894
-
-WELCOME_PHOTO_ID = "AgACAgQAAyEFAATJVYx3AAJ6-WmPVdnWb8oTmQ3dP8lahEm_r1x2AAIID2sbKP6AUFlsHVWp1LFcAQADAgADeQADOgQ"
+GROUP_ID = -1003377826935
 
 user_messages = {}
 
@@ -41,36 +40,88 @@ def is_authorized(user_id, chat_id):
     return is_owner(user_id) or is_admin(user_id, chat_id)
 
 # ==========================
-# FOTOĞRAFLI HOŞGELDİN
+# HOŞGELDİN
 # ==========================
-GROUP_1 = -1003738445088
-GROUP_2 = -1003377826935
-
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
-    chat_id = message.chat.id
+    if message.chat.id != GROUP_ID:
+        return
 
     for user in message.new_chat_members:
+        text = f"""
+🔥 Hosgeldin {user.first_name}
 
-        if chat_id == GROUP_1:
-            text = f"""
-🔥 Hosgeldiniz {user.first_name}
-
-İletisim @BlaxAP31
-Reklam @BlaxAP31
-Hile alım @BlaxAP31
-"""
-            msg = bot.send_photo(chat_id, WELCOME_PHOTO_ID, caption=text)
-            delete_later(chat_id, msg.message_id)
-
-        elif chat_id == GROUP_2:
-            text = f"""
-Hosgeldin {user.first_name}
+Burası karanlık esprilerin, ters köşe mizahın ve filtresiz zekânın buluştuğu bir alan.
+Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yoktur.
 
 #KAOS
 """
-            msg = bot.send_message(chat_id, text)
-            delete_later(chat_id, msg.message_id)
+        msg = bot.send_message(message.chat.id, text)
+        delete_later(message.chat.id, msg.message_id)
+
+# ==========================
+# INFO (REPLY DESTEKLİ)
+# ==========================
+@bot.message_handler(commands=['info'])
+def info_command(message):
+    if message.chat.id != GROUP_ID:
+        return
+
+    if message.reply_to_message:
+        user = message.reply_to_message.from_user
+    else:
+        user = message.from_user
+
+    username = f"@{user.username}" if user.username else "Yok"
+
+    role = "Üye"
+    try:
+        member = bot.get_chat_member(message.chat.id, user.id)
+        if member.status == "creator":
+            role = "Owner 👑"
+        elif member.status == "administrator":
+            role = "Admin 🛡"
+    except:
+        pass
+
+    text = f"""
+📌 KULLANICI BİLGİSİ
+
+👤 İsim: {user.first_name}
+🔗 Kullanıcı Adı: {username}
+🆔 Kullanıcı ID: {user.id}
+🎖 Yetki: {role}
+
+📍 Grup ID: {message.chat.id}
+"""
+
+    msg = bot.send_message(message.chat.id, text)
+    delete_later(message.chat.id, msg.message_id)
+
+# ==========================
+# STAFF
+# ==========================
+@bot.message_handler(commands=['staff'])
+def staff_command(message):
+    if message.chat.id != GROUP_ID:
+        return
+
+    try:
+        admins = bot.get_chat_administrators(message.chat.id)
+
+        text = "👑 KAOS STAFF\n\n"
+
+        for admin in admins:
+            user = admin.user
+            if admin.status == "creator":
+                text += f"👑 Owner: {user.first_name}\n"
+            else:
+                text += f"🛡 Admin: {user.first_name}\n"
+
+        msg = bot.send_message(message.chat.id, text)
+        delete_later(message.chat.id, msg.message_id)
+    except:
+        pass
 
 # ==========================
 # MUTE
@@ -173,50 +224,7 @@ def unban_user(message):
 
     msg = bot.send_message(message.chat.id, "✅ Ban kaldırıldı.")
     delete_later(message.chat.id, msg.message_id)
-# ==========================
-# INFO
-# ==========================
-@bot.message_handler(commands=['info'])
-def user_info(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
-        return
 
-    if not message.reply_to_message:
-        return
-
-    user = message.reply_to_message.from_user
-
-    text = f"""
-👤 İsim: {user.first_name}
-🆔 ID: {user.id}
-🔗 Username: @{user.username}
-🤖 Bot mu?: {user.is_bot}
-"""
-
-    msg = bot.send_message(message.chat.id, text)
-    delete_later(message.chat.id, msg.message_id)
-
-
-# ==========================
-# STAFF (ADMİNLERİ GÖSTER)
-# ==========================
-@bot.message_handler(commands=['staff'])
-def staff_list(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
-        return
-
-    admins = bot.get_chat_administrators(message.chat.id)
-
-    staff_text = "👑 STAFF LİSTESİ\n\n"
-
-    for admin in admins:
-        user = admin.user
-        staff_text += f"• {user.first_name} (ID: {user.id})\n"
-
-    msg = bot.send_message(message.chat.id, staff_text)
-    delete_later(message.chat.id, msg.message_id)
 # ==========================
 # START
 # ==========================
@@ -230,6 +238,8 @@ Komutlar:
 /unmute
 /ban
 /unban
+/info
+/staff
 """)
     delete_later(message.chat.id, msg.message_id)
 
@@ -243,16 +253,13 @@ def guard_system(message):
     text = message.text.lower()
     now = time.time()
 
-    # Komut yazdıysa admin değilse sil
     if text.startswith("/") and not is_authorized(user_id, chat_id):
         bot.delete_message(chat_id, message.message_id)
         return
 
-    # Admin muaf
     if is_authorized(user_id, chat_id):
         return
 
-    # Spam kontrol
     if user_id not in user_messages:
         user_messages[user_id] = []
 
@@ -263,7 +270,6 @@ def guard_system(message):
         bot.delete_message(chat_id, message.message_id)
         return
 
-    # Küfür listesi
     bad_words = [
         "amk","aq","amq","amina","amına","amcik","amcık",
         "orospu","oc","oç","pic","piç",
