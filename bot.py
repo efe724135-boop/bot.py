@@ -43,10 +43,18 @@ def is_authorized(user_id, chat_id):
 # ==========================
 # FOTOĞRAFLI HOŞGELDİN
 # ==========================
+GROUP_1 = -1003738445088
+GROUP_2 = -1003377826935
+
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
-    if message.new_chat_members:
-        for user in message.new_chat_members:
+    chat_id = message.chat.id
+
+    for user in message.new_chat_members:
+
+        # ===== 1. GRUP =====
+        if chat_id == GROUP_1:
+
             text = f"""
 🔥 Hosgeldiniz {user.first_name}
 
@@ -55,18 +63,37 @@ Reklam @BlaxAP31
 Hile alım @BlaxAP31
 
 💰 Fiyatlar
-🇲🇫1 günlük 100 TL
+🇫🇷 1 günlük 100 TL
 3 günlük 180 TL
 1 hafta 250 TL
 1 ay 450 TL
 Sezonluk 510 TL
 """
+
             msg = bot.send_photo(
-                message.chat.id,
+                chat_id,
                 WELCOME_PHOTO_ID,
                 caption=text
             )
-            delete_later(message.chat.id, msg.message_id)
+
+            delete_later(chat_id, msg.message_id)
+
+
+        # ===== 2. GRUP =====
+        elif chat_id == GROUP_2:
+
+            text = f"""
+Hosgeldin {user.first_name}
+
+Burası karanlık esprilerin, ters köşe mizahın ve filtresiz zekânın buluştuğu bir alan.
+Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yoktur.
+
+#KAOS
+"""
+
+            msg = bot.send_message(chat_id, text)
+
+            delete_later(chat_id, msg.message_id)
 
 # ==========================
 # MUTE
