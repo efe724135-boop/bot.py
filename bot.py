@@ -173,7 +173,50 @@ def unban_user(message):
 
     msg = bot.send_message(message.chat.id, "✅ Ban kaldırıldı.")
     delete_later(message.chat.id, msg.message_id)
+# ==========================
+# INFO
+# ==========================
+@bot.message_handler(commands=['info'])
+def user_info(message):
+    if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
+        return
 
+    if not message.reply_to_message:
+        return
+
+    user = message.reply_to_message.from_user
+
+    text = f"""
+👤 İsim: {user.first_name}
+🆔 ID: {user.id}
+🔗 Username: @{user.username}
+🤖 Bot mu?: {user.is_bot}
+"""
+
+    msg = bot.send_message(message.chat.id, text)
+    delete_later(message.chat.id, msg.message_id)
+
+
+# ==========================
+# STAFF (ADMİNLERİ GÖSTER)
+# ==========================
+@bot.message_handler(commands=['staff'])
+def staff_list(message):
+    if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
+        return
+
+    admins = bot.get_chat_administrators(message.chat.id)
+
+    staff_text = "👑 STAFF LİSTESİ\n\n"
+
+    for admin in admins:
+        user = admin.user
+        staff_text += f"• {user.first_name} (ID: {user.id})\n"
+
+    msg = bot.send_message(message.chat.id, staff_text)
+    delete_later(message.chat.id, msg.message_id)
 # ==========================
 # START
 # ==========================
