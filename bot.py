@@ -6,7 +6,7 @@ import threading
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-OWNER_ID = 8213465894  # BURAYA KENDİ ID'NI YAZ
+OWNER_ID = 8213465894
 
 WELCOME_PHOTO_ID = "AgACAgQAAyEFAATJVYx3AAJ6-WmPVdnWb8oTmQ3dP8lahEm_r1x2AAIID2sbKP6AUFlsHVWp1LFcAQADAgADeQADOgQ"
 
@@ -52,9 +52,7 @@ def welcome(message):
 
     for user in message.new_chat_members:
 
-        # ===== 1. GRUP =====
         if chat_id == GROUP_1:
-
             text = f"""
 🔥 Hosgeldiniz {user.first_name}
 
@@ -69,19 +67,10 @@ Hile alım @BlaxAP31
 1 ay 450 TL
 Sezonluk 510 TL
 """
-
-            msg = bot.send_photo(
-                chat_id,
-                WELCOME_PHOTO_ID,
-                caption=text
-            )
-
+            msg = bot.send_photo(chat_id, WELCOME_PHOTO_ID, caption=text)
             delete_later(chat_id, msg.message_id)
 
-
-        # ===== 2. GRUP =====
         elif chat_id == GROUP_2:
-
             text = f"""
 Hosgeldin {user.first_name}
 
@@ -90,9 +79,7 @@ Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yok
 
 #KAOS
 """
-
             msg = bot.send_message(chat_id, text)
-
             delete_later(chat_id, msg.message_id)
 
 # ==========================
@@ -153,7 +140,7 @@ def unmute_user(message):
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# BAN (ADMİN DAHİL)
+# BAN
 # ==========================
 @bot.message_handler(commands=['ban'])
 def ban_user(message):
@@ -165,7 +152,6 @@ def ban_user(message):
 
     target = message.reply_to_message.from_user
 
-    # OWNER BANLANAMAZ
     if is_owner(target.id):
         msg = bot.send_message(message.chat.id, "❌ Owner banlanamaz.")
         delete_later(message.chat.id, msg.message_id)
@@ -195,28 +181,17 @@ def unban_user(message):
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# START
-# ==========================
-@bot.message_handler(commands=['start'])
-def start(message):
-    msg = bot.send_message(message.chat.id,
-"""🔥 Guard Bot Aktif
-
-Komutlar:
-/mute 5-10-15
-/unmute
-/ban
-/unban
-""")
-    delete_later(message.chat.id, msg.message_id)
-
-# ==========================
-# SPAM KORUMA
+# SPAM + KÜFÜR + REKLAM (ADMIN MUAF)
 # ==========================
 @bot.message_handler(func=lambda m: m.content_type == "text" and not m.text.startswith("/"))
 def spam_control(message):
     user_id = message.from_user.id
+    chat_id = message.chat.id
+    text = message.text.lower()
     now = time.time()
+
+    if is_authorized(user_id, chat_id):
+        return
 
     if user_id not in user_messages:
         user_messages[user_id] = []
@@ -226,7 +201,17 @@ def spam_control(message):
 
     if len(user_messages[user_id]) > 5:
         try:
-            bot.delete_message(message.chat.id, message.message_id)
+            bot.delete_message(chat_id, message.message_id)
+        except:
+            pass
+        return
+
+    bad_words = ["oç", "amk", "piç"]
+    links = ["http", "t.me", ".com", ".net"]
+
+    if any(word in text for word in bad_words) or any(link in text for link in links):
+        try:
+            bot.delete_message(chat_id, message.message_id)
         except:
             pass
 
