@@ -59,13 +59,6 @@ def welcome(message):
 İletisim @BlaxAP31
 Reklam @BlaxAP31
 Hile alım @BlaxAP31
-
-💰 Fiyatlar
-🇫🇷 1 günlük 100 TL
-3 günlük 180 TL
-1 hafta 250 TL
-1 ay 450 TL
-Sezonluk 510 TL
 """
             msg = bot.send_photo(chat_id, WELCOME_PHOTO_ID, caption=text)
             delete_later(chat_id, msg.message_id)
@@ -73,9 +66,6 @@ Sezonluk 510 TL
         elif chat_id == GROUP_2:
             text = f"""
 Hosgeldin {user.first_name}
-
-Burası karanlık esprilerin, ters köşe mizahın ve filtresiz zekânın buluştuğu bir alan.
-Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yoktur.
 
 #KAOS
 """
@@ -88,6 +78,7 @@ Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yok
 @bot.message_handler(commands=['mute'])
 def mute_user(message):
     if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
         return
 
     if not message.reply_to_message:
@@ -121,6 +112,7 @@ def mute_user(message):
 @bot.message_handler(commands=['unmute'])
 def unmute_user(message):
     if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
         return
 
     if not message.reply_to_message:
@@ -145,6 +137,7 @@ def unmute_user(message):
 @bot.message_handler(commands=['ban'])
 def ban_user(message):
     if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
         return
 
     if not message.reply_to_message:
@@ -168,6 +161,7 @@ def ban_user(message):
 @bot.message_handler(commands=['unban'])
 def unban_user(message):
     if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
         return
 
     try:
@@ -177,22 +171,45 @@ def unban_user(message):
 
     bot.unban_chat_member(message.chat.id, user_id)
 
-    msg = bot.send_message(message.chat.id, "✅ Kullanıcının banı kaldırıldı.")
+    msg = bot.send_message(message.chat.id, "✅ Ban kaldırıldı.")
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# SPAM + KÜFÜR + REKLAM (ADMIN MUAF)
+# START
 # ==========================
-@bot.message_handler(func=lambda m: m.content_type == "text" and not m.text.startswith("/"))
-def spam_control(message):
+@bot.message_handler(commands=['start'])
+def start(message):
+    msg = bot.send_message(message.chat.id,
+"""🔥 Guard Bot Aktif
+
+Komutlar:
+/mute 5-10-15
+/unmute
+/ban
+/unban
+""")
+    delete_later(message.chat.id, msg.message_id)
+
+# ==========================
+# SPAM + KÜFÜR + REKLAM
+# ==========================
+@bot.message_handler(func=lambda m: m.content_type == "text")
+def guard_system(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
     text = message.text.lower()
     now = time.time()
 
+    # Komut yazdıysa admin değilse sil
+    if text.startswith("/") and not is_authorized(user_id, chat_id):
+        bot.delete_message(chat_id, message.message_id)
+        return
+
+    # Admin muaf
     if is_authorized(user_id, chat_id):
         return
 
+    # Spam kontrol
     if user_id not in user_messages:
         user_messages[user_id] = []
 
@@ -200,20 +217,27 @@ def spam_control(message):
     user_messages[user_id].append(now)
 
     if len(user_messages[user_id]) > 5:
-        try:
-            bot.delete_message(chat_id, message.message_id)
-        except:
-            pass
+        bot.delete_message(chat_id, message.message_id)
         return
 
-    bad_words = ["oç", "amk", "piç"]
-    links = ["http", "t.me", ".com", ".net"]
+    # Küfür listesi
+    bad_words = [
+        "amk","aq","amq","amina","amına","amcik","amcık",
+        "orospu","oc","oç","pic","piç",
+        "sik","sikerim","siktir",
+        "yarak","yarrak",
+        "got","göt",
+        "ibne",
+        "anan","ananı",
+        "bacini","bacını",
+        "pezevenk","kahpe","şerefsiz","serefsiz"
+    ]
+
+    links = ["http", "https", "t.me", ".com", ".net", ".org"]
 
     if any(word in text for word in bad_words) or any(link in text for link in links):
-        try:
-            bot.delete_message(chat_id, message.message_id)
-        except:
-            pass
+        bot.delete_message(chat_id, message.message_id)
+        return
 
-print("Bot aktif...")
+print("Guard Bot Aktif 🔥")
 bot.infinity_polling()
