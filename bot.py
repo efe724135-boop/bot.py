@@ -2,13 +2,12 @@ import telebot
 import os
 import json
 import time
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # veya direkt yaz
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # veya direkt token yaz
 bot = telebot.TeleBot(BOT_TOKEN)
 
 OWNER_ID = 8213465894
-LOG_CHANNEL_ID = -1003592251366 # LOG KANAL ID BURAYA
+LOG_CHANNEL_ID = -1003592251366 # LOG KANAL ID
 
 ADMIN_FILE = "admins.json"
 
@@ -111,6 +110,80 @@ def info_user(message):
 👤 İsim: {user.first_name}
 🆔 ID: {user.id}
 🎖 Yetki: {roles.get(level)}
+"""
+
+    bot.send_message(message.chat.id, text)
+
+# ==========================
+# YETKİ VER / AL
+# ==========================
+@bot.message_handler(commands=['yetki'])
+def set_permission(message):
+
+    if get_level(message.from_user.id, message.chat.id) < 4:
+        return
+
+    if not message.reply_to_message:
+        bot.send_message(message.chat.id, "Bir kullanıcıya reply yap.")
+        return
+
+    try:
+        level = int(message.text.split()[1])
+    except:
+        bot.send_message(message.chat.id, "Seviye gir: 0-3")
+        return
+
+    target = message.reply_to_message.from_user
+
+    if is_protected(target.id):
+        return
+
+    if level == 0:
+        if str(target.id) in admins:
+            del admins[str(target.id)]
+    else:
+        admins[str(target.id)] = level
+
+    save_admins()
+
+    bot.send_message(message.chat.id, f"{target.first_name} yetki seviyesi {level} yapıldı.")
+    log(f"⚙️ Yetki değişti: {target.id} → {level}")
+
+# ==========================
+# ADMİN LİSTESİ
+# ==========================
+@bot.message_handler(commands=['adminlist'])
+def admin_list(message):
+
+    if get_level(message.from_user.id, message.chat.id) < 4:
+        return
+
+    text = "👑 Yetkili Listesi\n\n"
+
+    if not admins:
+        text += "Ekstra yetkili yok."
+    else:
+        for uid, level in admins.items():
+            text += f"{uid} → Seviye {level}\n"
+
+    bot.send_message(message.chat.id, text)
+
+# ==========================
+# SİSTEM DURUMU
+# ==========================
+@bot.message_handler(commands=['durum'])
+def system_status(message):
+
+    if get_level(message.from_user.id, message.chat.id) < 4:
+        return
+
+    text = f"""
+📊 SİSTEM DURUMU
+
+Ekstra Admin: {len(admins)}
+Flood Limit: {FLOOD_LIMIT}
+Flood Süresi: {FLOOD_TIME} sn
+Küfür Filtresi: Aktif
 """
 
     bot.send_message(message.chat.id, text)
@@ -221,54 +294,6 @@ def unmute_user(message):
     log(f"🔊 Unmute: {target.id}")
 
 # ==========================
-# BUTONLU PANEL
-# ==========================
-@bot.message_handler(commands=['panel'])
-def admin_panel(message):
-
-    if get_level(message.from_user.id, message.chat.id) < 4:
-        return
-
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton("👑 Admin Listesi", callback_data="admin_list"),
-        InlineKeyboardButton("📊 Sistem Durumu", callback_data="system_status")
-    )
-
-    bot.send_message(message.chat.id, "👑 OWNER PANEL", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: True)
-def panel_callbacks(call):
-
-    if get_level(call.from_user.id, call.message.chat.id) < 4:
-        return
-
-    if call.data == "admin_list":
-
-        text = "👑 Yetkili Listesi\n\n"
-
-        if not admins:
-            text += "Ekstra yetkili yok."
-        else:
-            for uid, level in admins.items():
-                text += f"{uid} → Seviye {level}\n"
-
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
-
-    elif call.data == "system_status":
-
-        text = f"""
-📊 SİSTEM DURUMU
-
-Toplam Ekstra Admin: {len(admins)}
-Flood Limit: {FLOOD_LIMIT}
-Flood Süresi: {FLOOD_TIME} sn
-Küfür Filtresi: Aktif
-"""
-
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
-
-# ==========================
 # FLOOD + KÜFÜR
 # ==========================
 @bot.message_handler(func=lambda m: True, content_types=['text'])
@@ -302,14 +327,5 @@ def message_control(message):
 # ==========================
 # RUN
 # ==========================
-def run():
-    while True:
-        try:
-            bot.remove_webhook()
-            bot.infinity_polling(timeout=60)
-        except Exception as e:
-            print("Hata:", e)
-            time.sleep(5)
-
 print("FULL GUARD BOT AKTİF")
-run()
+bot.infinity_polling()
