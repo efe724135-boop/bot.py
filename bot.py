@@ -1,200 +1,178 @@
-import telebot
+import asyncio
 import os
-import json
 import time
+import re
+from datetime import datetime, timedelta
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # veya direkt token yaz
-bot = telebot.TeleBot(BOT_TOKEN)
+import aiosqlite
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, BotCommand
+from aiogram.filters import Command
+
+# ================= CONFIG =================
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 OWNER_ID = 8213465894
-LOG_CHANNEL_ID = -1003592251366 # LOG KANAL ID
+LOG_GROUP_ID = -1003592251366
 
-ADMIN_FILE = "admins.json"
+DB_NAME = "bot.db"
 
-FLOOD_LIMIT = 5
-FLOOD_TIME = 10
+WARN_LIMIT = 20
+WARN_TRACK_TIME = 300  # 5 dakika
 
-bad_words = ["amk", "orospu", "piç"]
+# ================= INIT =================
 
-user_messages = {}
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
-# ==========================
-# ADMIN DOSYA
-# ==========================
-def load_admins():
-    try:
-        with open(ADMIN_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+tracked_users = {}  # warn limit sonrası takip modu
 
-def save_admins():
-    with open(ADMIN_FILE, "w") as f:
-        json.dump(admins, f)
 
-admins = load_admins()
+# ================= DATABASE =================
 
-# ==========================
-# YETKİ SİSTEMİ
-# ==========================
-def get_level(user_id, chat_id):
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS roles(
+            user_id INTEGER PRIMARY KEY,
+            level INTEGER
+        )
+        """)
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS warns(
+            user_id INTEGER PRIMARY KEY,
+            count INTEGER
+        )
+        """)
+        await db.commit()
 
+
+async def get_role(user_id):
     if user_id == OWNER_ID:
         return 4
 
-    if str(user_id) in admins:
-        return admins[str(user_id)]
-
-    try:
-        member = bot.get_chat_member(chat_id, user_id)
-        if member.status in ["creator", "administrator"]:
-            return 1
-    except:
-        pass
-
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT level FROM roles WHERE user_id=?", (user_id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                return row[0]
     return 0
 
-def is_protected(user_id):
-    return user_id == OWNER_ID
 
-# ==========================
-# LOG
-# ==========================
-def log(text):
+async def set_role(user_id, level):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("REPLACE INTO roles(user_id, level) VALUES (?,?)", (user_id, level))
+        await db.commit()
+
+
+async def log(text):
     try:
-        bot.send_message(LOG_CHANNEL_ID, text)
+        await bot.send_message(LOG_GROUP_ID, text)
     except:
         pass
 
-# ==========================
-# HOŞGELDİN
-# ==========================
-@bot.message_handler(content_types=['new_chat_members'])
-def welcome(message):
-    for user in message.new_chat_members:
-        text = f"""
-Hoşgeldin {user.first_name}
+
+# ================= TIME PARSER =================
+
+def parse_time(text):
+    match = re.match(r"(\d+)([mhd])", text)
+    if not match:
+        return None
+
+    value = int(match.group(1))
+    unit = match.group(2)
+
+    if unit == "m":
+        return timedelta(minutes=value)
+    if unit == "h":
+        return timedelta(hours=value)
+    if unit == "d":
+        return timedelta(days=value)
+
+    return None
+
+
+# ================= COMMAND MENU =================
+
+async def set_commands():
+    await bot.set_my_commands([
+        BotCommand("panel", "Admin Panel"),
+        BotCommand("mute", "Mute (10m, 2h, 1d)"),
+        BotCommand("tempban", "Geçici ban"),
+        BotCommand("ban", "Kalıcı ban"),
+        BotCommand("unban", "Ban kaldır"),
+        BotCommand("warn", "Warn ver"),
+        BotCommand("info", "Kullanıcı bilgisi"),
+    ])
+
+
+# ================= HOŞGELDİN =================
+
+@dp.message(F.new_chat_members)
+async def welcome(message: Message):
+    await message.answer("""
+Hoşgeldin 👋
 
 Burası karanlık esprilerin, ters köşe mizahın ve filtresiz zekânın buluştuğu bir alan.
 Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yoktur.
 
 #KAOS
-by Guard System
-"""
-        bot.send_message(message.chat.id, text)
+""")
 
-# ==========================
-# INFO
-# ==========================
-@bot.message_handler(commands=['info'])
-def info_user(message):
 
-    if message.reply_to_message:
-        user = message.reply_to_message.from_user
-    else:
-        user = message.from_user
+# ================= INFO =================
 
-    level = get_level(user.id, message.chat.id)
+@dp.message(Command("info"))
+async def info(message: Message):
+    user = message.reply_to_message.from_user if message.reply_to_message else message.from_user
+    role = await get_role(user.id)
 
     roles = {
         4: "Owner 👑",
         3: "Super Admin 🔥",
-        2: "Mod ⚡",
-        1: "Admin 🛡",
+        2: "Admin ⚡",
+        1: "Mod 🛡",
         0: "Üye"
     }
 
-    text = f"""
-📌 KULLANICI BİLGİSİ
+    await message.answer(
+        f"👤 {user.full_name}\n"
+        f"🆔 {user.id}\n"
+        f"🎖 Yetki: {roles.get(role)}"
+    )
 
-👤 İsim: {user.first_name}
-🆔 ID: {user.id}
-🎖 Yetki: {roles.get(level)}
-"""
 
-    bot.send_message(message.chat.id, text)
+# ================= YETKİ =================
 
-# ==========================
-# YETKİ VER / AL
-# ==========================
-@bot.message_handler(commands=['yetki'])
-def set_permission(message):
-
-    if get_level(message.from_user.id, message.chat.id) < 4:
+@dp.message(Command("yetki"))
+async def yetki(message: Message):
+    if message.from_user.id != OWNER_ID:
         return
 
     if not message.reply_to_message:
-        bot.send_message(message.chat.id, "Bir kullanıcıya reply yap.")
+        await message.answer("Reply yap.")
         return
 
     try:
         level = int(message.text.split()[1])
     except:
-        bot.send_message(message.chat.id, "Seviye gir: 0-3")
+        await message.answer("Seviye gir (0-3)")
         return
 
     target = message.reply_to_message.from_user
+    await set_role(target.id, level)
 
-    if is_protected(target.id):
-        return
+    await message.answer(f"{target.full_name} → Seviye {level}")
+    await log(f"👑 Yetki değişti | {target.id} → {level}")
 
-    if level == 0:
-        if str(target.id) in admins:
-            del admins[str(target.id)]
-    else:
-        admins[str(target.id)] = level
 
-    save_admins()
+# ================= WARN =================
 
-    bot.send_message(message.chat.id, f"{target.first_name} yetki seviyesi {level} yapıldı.")
-    log(f"⚙️ Yetki değişti: {target.id} → {level}")
-
-# ==========================
-# ADMİN LİSTESİ
-# ==========================
-@bot.message_handler(commands=['adminlist'])
-def admin_list(message):
-
-    if get_level(message.from_user.id, message.chat.id) < 4:
-        return
-
-    text = "👑 Yetkili Listesi\n\n"
-
-    if not admins:
-        text += "Ekstra yetkili yok."
-    else:
-        for uid, level in admins.items():
-            text += f"{uid} → Seviye {level}\n"
-
-    bot.send_message(message.chat.id, text)
-
-# ==========================
-# SİSTEM DURUMU
-# ==========================
-@bot.message_handler(commands=['durum'])
-def system_status(message):
-
-    if get_level(message.from_user.id, message.chat.id) < 4:
-        return
-
-    text = f"""
-📊 SİSTEM DURUMU
-
-Ekstra Admin: {len(admins)}
-Flood Limit: {FLOOD_LIMIT}
-Flood Süresi: {FLOOD_TIME} sn
-Küfür Filtresi: Aktif
-"""
-
-    bot.send_message(message.chat.id, text)
-
-# ==========================
-# BAN
-# ==========================
-@bot.message_handler(commands=['ban'])
-def ban_user(message):
-
-    if get_level(message.from_user.id, message.chat.id) < 2:
+@dp.message(Command("warn"))
+async def warn_user(message: Message):
+    role = await get_role(message.from_user.id)
+    if role < 2:
         return
 
     if not message.reply_to_message:
@@ -202,75 +180,115 @@ def ban_user(message):
 
     target = message.reply_to_message.from_user
 
-    if is_protected(target.id):
-        return
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT count FROM warns WHERE user_id=?", (target.id,)) as cur:
+            row = await cur.fetchone()
 
-    bot.ban_chat_member(message.chat.id, target.id)
-    bot.send_message(message.chat.id, "Kullanıcı banlandı.")
-    log(f"🚫 Ban: {target.id}")
+        count = row[0] + 1 if row else 1
 
-# ==========================
-# UNBAN
-# ==========================
-@bot.message_handler(commands=['unban'])
-def unban_user(message):
+        await db.execute("REPLACE INTO warns(user_id, count) VALUES (?,?)", (target.id, count))
+        await db.commit()
 
-    if get_level(message.from_user.id, message.chat.id) < 2:
-        return
+    if count >= WARN_LIMIT:
+        tracked_users[target.id] = time.time() + WARN_TRACK_TIME
 
-    try:
-        user_id = int(message.text.split()[1])
-    except:
-        return
+        await message.answer(
+            f"⚠ Warn limiti aşıldı.\n"
+            f"{WARN_TRACK_TIME//60} dakika takip moduna alındı."
+        )
 
-    if is_protected(user_id):
-        return
+        await log(f"⚠ TRACK MODE | {target.id}")
+    else:
+        await message.answer(f"⚠ Warn verildi ({count}/{WARN_LIMIT})")
 
-    bot.unban_chat_member(message.chat.id, user_id)
-    bot.send_message(message.chat.id, "Ban kaldırıldı.")
-    log(f"♻️ Unban: {user_id}")
 
-# ==========================
-# MUTE
-# ==========================
-@bot.message_handler(commands=['mute'])
-def mute_user(message):
+# ================= TRACK MODE =================
 
-    if get_level(message.from_user.id, message.chat.id) < 2:
+@dp.message()
+async def track_mode(message: Message):
+    uid = message.from_user.id
+
+    if uid in tracked_users:
+        if time.time() < tracked_users[uid]:
+            try:
+                await message.delete()
+            except:
+                pass
+        else:
+            del tracked_users[uid]
+
+
+# ================= MUTE =================
+
+@dp.message(Command("mute"))
+async def mute_user(message: Message):
+    role = await get_role(message.from_user.id)
+    if role < 2:
         return
 
     if not message.reply_to_message:
         return
 
-    try:
-        minutes = int(message.text.split()[1])
-    except:
+    args = message.text.split()
+    if len(args) < 2:
+        return
+
+    duration = parse_time(args[1])
+    if not duration:
         return
 
     target = message.reply_to_message.from_user
+    until = datetime.now() + duration
 
-    if is_protected(target.id):
-        return
-
-    until = int(time.time()) + minutes * 60
-
-    bot.restrict_chat_member(
+    await bot.restrict_chat_member(
         message.chat.id,
         target.id,
         until_date=until,
-        can_send_messages=False
+        permissions={"can_send_messages": False}
     )
 
-    bot.send_message(message.chat.id, f"{minutes} dakika susturuldu.")
-    log(f"🔇 Mute: {target.id} ({minutes} dk)")
+    await message.answer(f"🔇 Susturuldu ({args[1]})")
+    await log(f"🔇 MUTE | {target.id} | {args[1]}")
 
-# ==========================
-# UNMUTE
-# ==========================
-@bot.message_handler(commands=['unmute'])
-def unmute_user(message):
 
-    if get_level(message.from_user.id, message.chat.id) < 2:
+# ================= TEMPBAN =================
+
+@dp.message(Command("tempban"))
+async def tempban_user(message: Message):
+    role = await get_role(message.from_user.id)
+    if role < 2:
+        return
+
+    if not message.reply_to_message:
+        return
+
+    args = message.text.split()
+    if len(args) < 2:
+        return
+
+    duration = parse_time(args[1])
+    if not duration:
+        return
+
+    target = message.reply_to_message.from_user
+    until = datetime.now() + duration
+
+    await bot.ban_chat_member(
+        message.chat.id,
+        target.id,
+        until_date=until
+    )
+
+    await message.answer(f"🚫 Tempban ({args[1]})")
+    await log(f"🚫 TEMPBAN | {target.id} | {args[1]}")
+
+
+# ================= BAN =================
+
+@dp.message(Command("ban"))
+async def ban_user(message: Message):
+    role = await get_role(message.from_user.id)
+    if role < 2:
         return
 
     if not message.reply_to_message:
@@ -278,54 +296,37 @@ def unmute_user(message):
 
     target = message.reply_to_message.from_user
 
-    if is_protected(target.id):
+    await bot.ban_chat_member(message.chat.id, target.id)
+    await message.answer("🚫 Banlandı.")
+    await log(f"🚫 BAN | {target.id}")
+
+
+# ================= UNBAN =================
+
+@dp.message(Command("unban"))
+async def unban_user(message: Message):
+    role = await get_role(message.from_user.id)
+    if role < 2:
         return
 
-    bot.restrict_chat_member(
-        message.chat.id,
-        target.id,
-        can_send_messages=True,
-        can_send_media_messages=True,
-        can_send_other_messages=True,
-        can_add_web_page_previews=True
-    )
+    if not message.reply_to_message:
+        return
 
-    bot.send_message(message.chat.id, "Mute kaldırıldı.")
-    log(f"🔊 Unmute: {target.id}")
+    target = message.reply_to_message.from_user
 
-# ==========================
-# FLOOD + KÜFÜR
-# ==========================
-@bot.message_handler(func=lambda m: True, content_types=['text'])
-def message_control(message):
+    await bot.unban_chat_member(message.chat.id, target.id)
+    await message.answer("♻ Ban kaldırıldı.")
+    await log(f"♻ UNBAN | {target.id}")
 
-    uid = message.from_user.id
-    text = message.text.lower()
 
-    for word in bad_words:
-        if word in text:
-            bot.delete_message(message.chat.id, message.message_id)
-            return
+# ================= RUN =================
 
-    now = time.time()
+async def main():
+    await init_db()
+    await set_commands()
+    print("ULTRA BOT AKTİF")
+    await dp.start_polling(bot)
 
-    if uid not in user_messages:
-        user_messages[uid] = []
 
-    user_messages[uid] = [t for t in user_messages[uid] if now - t < FLOOD_TIME]
-    user_messages[uid].append(now)
-
-    if len(user_messages[uid]) > FLOOD_LIMIT:
-        bot.restrict_chat_member(
-            message.chat.id,
-            uid,
-            until_date=int(now) + 60,
-            can_send_messages=False
-        )
-        log(f"🔇 Flood mute: {uid}")
-
-# ==========================
-# RUN
-# ==========================
-print("FULL GUARD BOT AKTİF")
-bot.infinity_polling()
+if __name__ == "__main__":
+    asyncio.run(main())
