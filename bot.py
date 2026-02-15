@@ -290,3 +290,15 @@ def guard_system(message):
 
 print("Guard Bot Aktif 🔥")
 bot.infinity_polling()
+import time
+
+def run():
+    while True:
+        try:
+            bot.remove_webhook()
+            bot.infinity_polling(timeout=60, long_polling_timeout=60)
+        except Exception as e:
+            print("Hata:", e)
+            time.sleep(5)
+
+run()
