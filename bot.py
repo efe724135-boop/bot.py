@@ -7,7 +7,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 OWNER_ID = 8213465894
-GROUP_ID = -1003377826935
 
 user_messages = {}
 
@@ -26,33 +25,24 @@ def delete_later(chat_id, message_id, delay=15):
 # ==========================
 # YETKİ KONTROL
 # ==========================
-def is_owner(user_id):
-    return user_id == OWNER_ID
-
-def is_admin(user_id, chat_id):
+def is_authorized(user_id, chat_id):
     try:
         member = bot.get_chat_member(chat_id, user_id)
-        return member.status in ["administrator", "creator"]
+        return member.status in ["creator", "administrator"] or user_id == OWNER_ID
     except:
-        return False
-
-def is_authorized(user_id, chat_id):
-    return is_owner(user_id) or is_admin(user_id, chat_id)
+        return user_id == OWNER_ID
 
 # ==========================
 # HOŞGELDİN
 # ==========================
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
-    if message.chat.id != GROUP_ID:
-        return
-
     for user in message.new_chat_members:
         text = f"""
-🔥 Hosgeldin {user.first_name}
+🔥 Hoşgeldin {user.first_name}
 
-Burası karanlık esprilerin, ters köşe mizahın ve filtresiz zekânın buluştuğu bir alan.
-Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yoktur.
+Burası karanlık mizahın ve filtresiz zekânın buluştuğu alan.
+Kurallara uy, keyfine bak.
 
 #KAOS
 """
@@ -60,11 +50,12 @@ Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yok
         delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# INFO (REPLY DESTEKLİ)
+# INFO
 # ==========================
 @bot.message_handler(commands=['info'])
 def info_command(message):
-    if message.chat.id != GROUP_ID:
+    if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
         return
 
     if message.reply_to_message:
@@ -89,10 +80,8 @@ def info_command(message):
 
 👤 İsim: {user.first_name}
 🔗 Kullanıcı Adı: {username}
-🆔 Kullanıcı ID: {user.id}
+🆔 ID: {user.id}
 🎖 Yetki: {role}
-
-📍 Grup ID: {message.chat.id}
 """
 
     msg = bot.send_message(message.chat.id, text)
@@ -103,25 +92,21 @@ def info_command(message):
 # ==========================
 @bot.message_handler(commands=['staff'])
 def staff_command(message):
-    if message.chat.id != GROUP_ID:
+    if not is_authorized(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
         return
 
-    try:
-        admins = bot.get_chat_administrators(message.chat.id)
+    admins = bot.get_chat_administrators(message.chat.id)
 
-        text = "👑 KAOS STAFF\n\n"
+    text = "👑 STAFF LİSTESİ\n\n"
+    for admin in admins:
+        if admin.status == "creator":
+            text += f"👑 {admin.user.first_name}\n"
+        else:
+            text += f"🛡 {admin.user.first_name}\n"
 
-        for admin in admins:
-            user = admin.user
-            if admin.status == "creator":
-                text += f"👑 Owner: {user.first_name}\n"
-            else:
-                text += f"🛡 Admin: {user.first_name}\n"
-
-        msg = bot.send_message(message.chat.id, text)
-        delete_later(message.chat.id, msg.message_id)
-    except:
-        pass
+    msg = bot.send_message(message.chat.id, text)
+    delete_later(message.chat.id, msg.message_id)
 
 # ==========================
 # MUTE
@@ -196,7 +181,7 @@ def ban_user(message):
 
     target = message.reply_to_message.from_user
 
-    if is_owner(target.id):
+    if target.id == OWNER_ID:
         msg = bot.send_message(message.chat.id, "❌ Owner banlanamaz.")
         delete_later(message.chat.id, msg.message_id)
         return
@@ -226,24 +211,6 @@ def unban_user(message):
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# START
-# ==========================
-@bot.message_handler(commands=['start'])
-def start(message):
-    msg = bot.send_message(message.chat.id,
-"""🔥 Guard Bot Aktif
-
-Komutlar:
-/mute 5-10-15
-/unmute
-/ban
-/unban
-/info
-/staff
-""")
-    delete_later(message.chat.id, msg.message_id)
-
-# ==========================
 # SPAM + KÜFÜR + REKLAM
 # ==========================
 @bot.message_handler(func=lambda m: m.content_type == "text")
@@ -253,6 +220,7 @@ def guard_system(message):
     text = message.text.lower()
     now = time.time()
 
+    # Yetkisiz komut sil
     if text.startswith("/") and not is_authorized(user_id, chat_id):
         bot.delete_message(chat_id, message.message_id)
         return
@@ -260,6 +228,7 @@ def guard_system(message):
     if is_authorized(user_id, chat_id):
         return
 
+    # Spam kontrol
     if user_id not in user_messages:
         user_messages[user_id] = []
 
@@ -270,28 +239,16 @@ def guard_system(message):
         bot.delete_message(chat_id, message.message_id)
         return
 
-    bad_words = [
-        "amk","aq","amq","amina","amına","amcik","amcık",
-        "orospu","oc","oç","pic","piç",
-        "sik","sikerim","siktir",
-        "yarak","yarrak",
-        "got","göt",
-        "ibne",
-        "anan","ananı",
-        "bacini","bacını",
-        "pezevenk","kahpe","şerefsiz","serefsiz"
-    ]
-
-    links = ["http", "https", "t.me", ".com", ".net", ".org"]
+    bad_words = ["amk","aq","orospu","oç","piç","sik","yarak","göt"]
+    links = ["http","https","t.me",".com",".net",".org"]
 
     if any(word in text for word in bad_words) or any(link in text for link in links):
         bot.delete_message(chat_id, message.message_id)
         return
 
-print("Guard Bot Aktif 🔥")
-bot.infinity_polling()
-import time
-
+# ==========================
+# POLLING
+# ==========================
 def run():
     while True:
         try:
@@ -301,4 +258,5 @@ def run():
             print("Hata:", e)
             time.sleep(5)
 
+print("Guard Bot Aktif 🔥")
 run()
