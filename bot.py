@@ -1,36 +1,71 @@
 import telebot
 import os
+import json
 import time
-import threading
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # veya direkt yaz
 bot = telebot.TeleBot(BOT_TOKEN)
 
 OWNER_ID = 8213465894
+LOG_CHANNEL_ID = -1003592251366 # LOG KANAL ID BURAYA
+
+ADMIN_FILE = "admins.json"
+
+FLOOD_LIMIT = 5
+FLOOD_TIME = 10
+
+bad_words = ["amk", "orospu", "piç"]
 
 user_messages = {}
 
 # ==========================
-# MESAJI 15 SN SONRA SİL
+# ADMIN DOSYA
 # ==========================
-def delete_later(chat_id, message_id, delay=15):
-    def task():
-        time.sleep(delay)
-        try:
-            bot.delete_message(chat_id, message_id)
-        except:
-            pass
-    threading.Thread(target=task).start()
+def load_admins():
+    try:
+        with open(ADMIN_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_admins():
+    with open(ADMIN_FILE, "w") as f:
+        json.dump(admins, f)
+
+admins = load_admins()
 
 # ==========================
-# STAFF KONTROL
+# YETKİ SİSTEMİ
 # ==========================
-def is_staff(user_id, chat_id):
+def get_level(user_id, chat_id):
+
+    if user_id == OWNER_ID:
+        return 4
+
+    if str(user_id) in admins:
+        return admins[str(user_id)]
+
     try:
         member = bot.get_chat_member(chat_id, user_id)
-        return member.status in ["creator", "administrator"] or user_id == OWNER_ID
+        if member.status in ["creator", "administrator"]:
+            return 1
     except:
-        return user_id == OWNER_ID
+        pass
+
+    return 0
+
+def is_protected(user_id):
+    return user_id == OWNER_ID
+
+# ==========================
+# LOG
+# ==========================
+def log(text):
+    try:
+        bot.send_message(LOG_CHANNEL_ID, text)
+    except:
+        pass
 
 # ==========================
 # HOŞGELDİN
@@ -38,71 +73,47 @@ def is_staff(user_id, chat_id):
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
-        text = f"🔥 Hoşgeldin {user.first_name}\n\nKurallara uy, keyfine bak.\n\n#KAOS"
-        msg = bot.send_message(message.chat.id, text)
-        delete_later(message.chat.id, msg.message_id)
+        text = f"""
+Hoşgeldin {user.first_name}
+
+Burası karanlık esprilerin, ters köşe mizahın ve filtresiz zekânın buluştuğu bir alan.
+Mizah sert olabilir, espri karanlık olabilir ama illegal tek bir adım bile yoktur.
+
+#KAOS
+by Guard System
+"""
+        bot.send_message(message.chat.id, text)
 
 # ==========================
 # INFO
 # ==========================
 @bot.message_handler(commands=['info'])
-def info_command(message):
-
-    if not is_staff(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
-        return
+def info_user(message):
 
     if message.reply_to_message:
         user = message.reply_to_message.from_user
     else:
         user = message.from_user
 
-    username = f"@{user.username}" if user.username else "Yok"
+    level = get_level(user.id, message.chat.id)
 
-    role = "Üye"
-    try:
-        member = bot.get_chat_member(message.chat.id, user.id)
-        if member.status == "creator":
-            role = "Owner 👑"
-        elif member.status == "administrator":
-            role = "Admin 🛡"
-    except:
-        pass
+    roles = {
+        4: "Owner 👑",
+        3: "Super Admin 🔥",
+        2: "Mod ⚡",
+        1: "Admin 🛡",
+        0: "Üye"
+    }
 
     text = f"""
 📌 KULLANICI BİLGİSİ
 
 👤 İsim: {user.first_name}
-🔗 Kullanıcı Adı: {username}
 🆔 ID: {user.id}
-🎖 Yetki: {role}
+🎖 Yetki: {roles.get(level)}
 """
 
-    msg = bot.send_message(message.chat.id, text)
-    delete_later(message.chat.id, msg.message_id)
-
-# ==========================
-# STAFF LİSTESİ
-# ==========================
-@bot.message_handler(commands=['staff'])
-def staff_command(message):
-
-    if not is_staff(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
-        return
-
-    admins = bot.get_chat_administrators(message.chat.id)
-
-    text = "👑 STAFF LİSTESİ\n\n"
-
-    for admin in admins:
-        if admin.status == "creator":
-            text += f"👑 {admin.user.first_name}\n"
-        else:
-            text += f"🛡 {admin.user.first_name}\n"
-
-    msg = bot.send_message(message.chat.id, text)
-    delete_later(message.chat.id, msg.message_id)
+    bot.send_message(message.chat.id, text)
 
 # ==========================
 # BAN
@@ -110,8 +121,7 @@ def staff_command(message):
 @bot.message_handler(commands=['ban'])
 def ban_user(message):
 
-    if not is_staff(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
+    if get_level(message.from_user.id, message.chat.id) < 2:
         return
 
     if not message.reply_to_message:
@@ -119,15 +129,12 @@ def ban_user(message):
 
     target = message.reply_to_message.from_user
 
-    if target.id == OWNER_ID:
-        msg = bot.send_message(message.chat.id, "❌ Owner banlanamaz.")
-        delete_later(message.chat.id, msg.message_id)
+    if is_protected(target.id):
         return
 
     bot.ban_chat_member(message.chat.id, target.id)
-
-    msg = bot.send_message(message.chat.id, f"🚫 {target.first_name} banlandı.")
-    delete_later(message.chat.id, msg.message_id)
+    bot.send_message(message.chat.id, "Kullanıcı banlandı.")
+    log(f"🚫 Ban: {target.id}")
 
 # ==========================
 # UNBAN
@@ -135,8 +142,7 @@ def ban_user(message):
 @bot.message_handler(commands=['unban'])
 def unban_user(message):
 
-    if not is_staff(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
+    if get_level(message.from_user.id, message.chat.id) < 2:
         return
 
     try:
@@ -144,10 +150,12 @@ def unban_user(message):
     except:
         return
 
-    bot.unban_chat_member(message.chat.id, user_id)
+    if is_protected(user_id):
+        return
 
-    msg = bot.send_message(message.chat.id, "✅ Ban kaldırıldı.")
-    delete_later(message.chat.id, msg.message_id)
+    bot.unban_chat_member(message.chat.id, user_id)
+    bot.send_message(message.chat.id, "Ban kaldırıldı.")
+    log(f"♻️ Unban: {user_id}")
 
 # ==========================
 # MUTE
@@ -155,26 +163,20 @@ def unban_user(message):
 @bot.message_handler(commands=['mute'])
 def mute_user(message):
 
-    if not is_staff(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
+    if get_level(message.from_user.id, message.chat.id) < 2:
         return
 
     if not message.reply_to_message:
         return
-
-    target = message.reply_to_message.from_user
 
     try:
         minutes = int(message.text.split()[1])
     except:
         return
 
-    if minutes not in [5, 10, 15]:
-        return
+    target = message.reply_to_message.from_user
 
-    if target.id == OWNER_ID:
-        msg = bot.send_message(message.chat.id, "❌ Owner susturulamaz.")
-        delete_later(message.chat.id, msg.message_id)
+    if is_protected(target.id):
         return
 
     until = int(time.time()) + minutes * 60
@@ -186,8 +188,8 @@ def mute_user(message):
         can_send_messages=False
     )
 
-    msg = bot.send_message(message.chat.id, f"🔇 {target.first_name} {minutes} dakika susturuldu.")
-    delete_later(message.chat.id, msg.message_id)
+    bot.send_message(message.chat.id, f"{minutes} dakika susturuldu.")
+    log(f"🔇 Mute: {target.id} ({minutes} dk)")
 
 # ==========================
 # UNMUTE
@@ -195,8 +197,7 @@ def mute_user(message):
 @bot.message_handler(commands=['unmute'])
 def unmute_user(message):
 
-    if not is_staff(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
+    if get_level(message.from_user.id, message.chat.id) < 2:
         return
 
     if not message.reply_to_message:
@@ -204,7 +205,7 @@ def unmute_user(message):
 
     target = message.reply_to_message.from_user
 
-    if target.id == OWNER_ID:
+    if is_protected(target.id):
         return
 
     bot.restrict_chat_member(
@@ -216,55 +217,99 @@ def unmute_user(message):
         can_add_web_page_previews=True
     )
 
-    msg = bot.send_message(message.chat.id, f"🔊 {target.first_name} susturma kaldırıldı.")
-    delete_later(message.chat.id, msg.message_id)
+    bot.send_message(message.chat.id, "Mute kaldırıldı.")
+    log(f"🔊 Unmute: {target.id}")
 
 # ==========================
-# SPAM + REKLAM + KÜFÜR
+# BUTONLU PANEL
 # ==========================
-@bot.message_handler(func=lambda m: m.content_type == "text")
-def guard_system(message):
+@bot.message_handler(commands=['panel'])
+def admin_panel(message):
 
-    user_id = message.from_user.id
-    chat_id = message.chat.id
+    if get_level(message.from_user.id, message.chat.id) < 4:
+        return
+
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton("👑 Admin Listesi", callback_data="admin_list"),
+        InlineKeyboardButton("📊 Sistem Durumu", callback_data="system_status")
+    )
+
+    bot.send_message(message.chat.id, "👑 OWNER PANEL", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: True)
+def panel_callbacks(call):
+
+    if get_level(call.from_user.id, call.message.chat.id) < 4:
+        return
+
+    if call.data == "admin_list":
+
+        text = "👑 Yetkili Listesi\n\n"
+
+        if not admins:
+            text += "Ekstra yetkili yok."
+        else:
+            for uid, level in admins.items():
+                text += f"{uid} → Seviye {level}\n"
+
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
+
+    elif call.data == "system_status":
+
+        text = f"""
+📊 SİSTEM DURUMU
+
+Toplam Ekstra Admin: {len(admins)}
+Flood Limit: {FLOOD_LIMIT}
+Flood Süresi: {FLOOD_TIME} sn
+Küfür Filtresi: Aktif
+"""
+
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
+
+# ==========================
+# FLOOD + KÜFÜR
+# ==========================
+@bot.message_handler(func=lambda m: True, content_types=['text'])
+def message_control(message):
+
+    uid = message.from_user.id
     text = message.text.lower()
+
+    for word in bad_words:
+        if word in text:
+            bot.delete_message(message.chat.id, message.message_id)
+            return
+
     now = time.time()
 
-    if text.startswith("/") and not is_staff(user_id, chat_id):
-        bot.delete_message(chat_id, message.message_id)
-        return
+    if uid not in user_messages:
+        user_messages[uid] = []
 
-    if is_staff(user_id, chat_id):
-        return
+    user_messages[uid] = [t for t in user_messages[uid] if now - t < FLOOD_TIME]
+    user_messages[uid].append(now)
 
-    if user_id not in user_messages:
-        user_messages[user_id] = []
-
-    user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 5]
-    user_messages[user_id].append(now)
-
-    if len(user_messages[user_id]) > 5:
-        bot.delete_message(chat_id, message.message_id)
-        return
-
-    bad_words = ["amk","aq","orospu","oç","piç","sik","yarak","göt"]
-    links = ["http","https","t.me",".com",".net",".org"]
-
-    if any(word in text for word in bad_words) or any(link in text for link in links):
-        bot.delete_message(chat_id, message.message_id)
-        return
+    if len(user_messages[uid]) > FLOOD_LIMIT:
+        bot.restrict_chat_member(
+            message.chat.id,
+            uid,
+            until_date=int(now) + 60,
+            can_send_messages=False
+        )
+        log(f"🔇 Flood mute: {uid}")
 
 # ==========================
-# POLLING
+# RUN
 # ==========================
 def run():
     while True:
         try:
             bot.remove_webhook()
-            bot.infinity_polling(timeout=60, long_polling_timeout=60)
+            bot.infinity_polling(timeout=60)
         except Exception as e:
             print("Hata:", e)
             time.sleep(5)
 
-print("Guard Bot Aktif 🔥")
+print("FULL GUARD BOT AKTİF")
 run()
