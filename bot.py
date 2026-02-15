@@ -23,9 +23,9 @@ def delete_later(chat_id, message_id, delay=15):
     threading.Thread(target=task).start()
 
 # ==========================
-# YETKİ KONTROL
+# STAFF KONTROL
 # ==========================
-def is_authorized(user_id, chat_id):
+def is_staff(user_id, chat_id):
     try:
         member = bot.get_chat_member(chat_id, user_id)
         return member.status in ["creator", "administrator"] or user_id == OWNER_ID
@@ -38,14 +38,7 @@ def is_authorized(user_id, chat_id):
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
-        text = f"""
-🔥 Hoşgeldin {user.first_name}
-
-Burası karanlık mizahın ve filtresiz zekânın buluştuğu alan.
-Kurallara uy, keyfine bak.
-
-#KAOS
-"""
+        text = f"🔥 Hoşgeldin {user.first_name}\n\nKurallara uy, keyfine bak.\n\n#KAOS"
         msg = bot.send_message(message.chat.id, text)
         delete_later(message.chat.id, msg.message_id)
 
@@ -54,7 +47,8 @@ Kurallara uy, keyfine bak.
 # ==========================
 @bot.message_handler(commands=['info'])
 def info_command(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
+
+    if not is_staff(message.from_user.id, message.chat.id):
         bot.delete_message(message.chat.id, message.message_id)
         return
 
@@ -88,17 +82,19 @@ def info_command(message):
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# STAFF
+# STAFF LİSTESİ
 # ==========================
 @bot.message_handler(commands=['staff'])
 def staff_command(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
+
+    if not is_staff(message.from_user.id, message.chat.id):
         bot.delete_message(message.chat.id, message.message_id)
         return
 
     admins = bot.get_chat_administrators(message.chat.id)
 
     text = "👑 STAFF LİSTESİ\n\n"
+
     for admin in admins:
         if admin.status == "creator":
             text += f"👑 {admin.user.first_name}\n"
@@ -109,70 +105,12 @@ def staff_command(message):
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# MUTE
-# ==========================
-@bot.message_handler(commands=['mute'])
-def mute_user(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
-        return
-
-    if not message.reply_to_message:
-        return
-
-    target = message.reply_to_message.from_user
-
-    try:
-        minutes = int(message.text.split()[1])
-    except:
-        return
-
-    if minutes not in [5, 10, 15]:
-        return
-
-    until = int(time.time()) + minutes * 60
-
-    bot.restrict_chat_member(
-        message.chat.id,
-        target.id,
-        until_date=until,
-        can_send_messages=False
-    )
-
-    msg = bot.send_message(message.chat.id, f"🔇 {target.first_name} {minutes} dakika susturuldu.")
-    delete_later(message.chat.id, msg.message_id)
-
-# ==========================
-# UNMUTE
-# ==========================
-@bot.message_handler(commands=['unmute'])
-def unmute_user(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
-        bot.delete_message(message.chat.id, message.message_id)
-        return
-
-    if not message.reply_to_message:
-        return
-
-    target = message.reply_to_message.from_user
-
-    bot.restrict_chat_member(
-        message.chat.id,
-        target.id,
-        can_send_messages=True,
-        can_send_media_messages=True,
-        can_send_other_messages=True
-    )
-
-    msg = bot.send_message(message.chat.id, f"🔊 {target.first_name} susturma kaldırıldı.")
-    delete_later(message.chat.id, msg.message_id)
-
-# ==========================
 # BAN
 # ==========================
 @bot.message_handler(commands=['ban'])
 def ban_user(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
+
+    if not is_staff(message.from_user.id, message.chat.id):
         bot.delete_message(message.chat.id, message.message_id)
         return
 
@@ -196,7 +134,8 @@ def ban_user(message):
 # ==========================
 @bot.message_handler(commands=['unban'])
 def unban_user(message):
-    if not is_authorized(message.from_user.id, message.chat.id):
+
+    if not is_staff(message.from_user.id, message.chat.id):
         bot.delete_message(message.chat.id, message.message_id)
         return
 
@@ -211,24 +150,93 @@ def unban_user(message):
     delete_later(message.chat.id, msg.message_id)
 
 # ==========================
-# SPAM + KÜFÜR + REKLAM
+# MUTE
+# ==========================
+@bot.message_handler(commands=['mute'])
+def mute_user(message):
+
+    if not is_staff(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
+        return
+
+    if not message.reply_to_message:
+        return
+
+    target = message.reply_to_message.from_user
+
+    try:
+        minutes = int(message.text.split()[1])
+    except:
+        return
+
+    if minutes not in [5, 10, 15]:
+        return
+
+    if target.id == OWNER_ID:
+        msg = bot.send_message(message.chat.id, "❌ Owner susturulamaz.")
+        delete_later(message.chat.id, msg.message_id)
+        return
+
+    until = int(time.time()) + minutes * 60
+
+    bot.restrict_chat_member(
+        message.chat.id,
+        target.id,
+        until_date=until,
+        can_send_messages=False
+    )
+
+    msg = bot.send_message(message.chat.id, f"🔇 {target.first_name} {minutes} dakika susturuldu.")
+    delete_later(message.chat.id, msg.message_id)
+
+# ==========================
+# UNMUTE
+# ==========================
+@bot.message_handler(commands=['unmute'])
+def unmute_user(message):
+
+    if not is_staff(message.from_user.id, message.chat.id):
+        bot.delete_message(message.chat.id, message.message_id)
+        return
+
+    if not message.reply_to_message:
+        return
+
+    target = message.reply_to_message.from_user
+
+    if target.id == OWNER_ID:
+        return
+
+    bot.restrict_chat_member(
+        message.chat.id,
+        target.id,
+        can_send_messages=True,
+        can_send_media_messages=True,
+        can_send_other_messages=True,
+        can_add_web_page_previews=True
+    )
+
+    msg = bot.send_message(message.chat.id, f"🔊 {target.first_name} susturma kaldırıldı.")
+    delete_later(message.chat.id, msg.message_id)
+
+# ==========================
+# SPAM + REKLAM + KÜFÜR
 # ==========================
 @bot.message_handler(func=lambda m: m.content_type == "text")
 def guard_system(message):
+
     user_id = message.from_user.id
     chat_id = message.chat.id
     text = message.text.lower()
     now = time.time()
 
-    # Yetkisiz komut sil
-    if text.startswith("/") and not is_authorized(user_id, chat_id):
+    if text.startswith("/") and not is_staff(user_id, chat_id):
         bot.delete_message(chat_id, message.message_id)
         return
 
-    if is_authorized(user_id, chat_id):
+    if is_staff(user_id, chat_id):
         return
 
-    # Spam kontrol
     if user_id not in user_messages:
         user_messages[user_id] = []
 
